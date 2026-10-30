@@ -1,5 +1,9 @@
 {
   "name": "ask-with-choices",
   "version": "0.1.0",
-  "description": "Tells Claude to ask questions as multiple choice in the question form (with its free-text Other field) instead of leaving them inline"
+  "description": "Tells Claude to ask questions as multiple choice in the question form (with its free-text Other field) instead of leaving them inline",
+  "license": "MIT",
+  "author": {
+    "name": "tiptoptopher"
+  }
 }

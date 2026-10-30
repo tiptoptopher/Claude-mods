@@ -2,5 +2,9 @@
   "name": "usage-meter",
   "version": "0.1.0",
   "description": "Context fill, 5h/7-day usage limits and cost, with per-prompt and per-step deltas, in a band, status line and pane",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "license": "MIT",
+  "author": {
+    "name": "tiptoptopher"
+  }
 }

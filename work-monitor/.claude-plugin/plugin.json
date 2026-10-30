@@ -2,5 +2,9 @@
   "name": "work-monitor",
   "version": "0.1.0",
   "description": "One pane showing the plan steps Claude is working through and the status of every subagent",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "license": "MIT",
+  "author": {
+    "name": "tiptoptopher"
+  }
 }
