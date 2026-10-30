@@ -1,0 +1,8 @@
+{
+  "name": "claude-mods",
+  "owner": { "name": "tiptoptopher" },
+  "plugins": [
+    { "name": "usage-meter", "source": "./usage-meter", "description": "Context fill, 5h/7-day usage limits and cost, with per-prompt and per-step deltas" },
+    { "name": "work-monitor", "source": "./work-monitor", "description": "One pane showing plan steps and the status of every subagent" }
+  ]
+}
