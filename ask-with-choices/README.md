@@ -41,3 +41,18 @@ Adds a short instruction to Claude's system prompt: when it needs a decision or 
 ```
 
 Answer `y` to add the marketplace, then pick a scope.
+
+## On by default in every cloud session
+
+Cloud sessions start in a fresh container, so add this to the cloud environment's **Setup script** (the environment menu in the session's title bar, then **Edit**). It needs this repository to be public.
+
+```bash
+# Install Claude mods from tiptoptopher/claude-mods for every new session.
+# Failures are reported but never stop the session from starting.
+if command -v claude >/dev/null 2>&1; then
+  claude plugin marketplace add tiptoptopher/claude-mods || echo "claude-mods: marketplace add failed"
+  for mod in usage-meter work-monitor ask-with-choices; do
+    claude plugin install "$mod@claude-mods" --scope user || echo "claude-mods: install of $mod failed"
+  done
+fi
+```
