@@ -17,9 +17,14 @@ Usage limits only appear on subscription plans. Cost appears where the plan repo
 
 Shows one pane (`/work-monitor`, which also opens the first time there's something to watch) with:
 
+- **Questions for you:** every question Claude asked. Questions from the question form show as answered (with your answer) or skipped. Questions Claude wrote in its reply stay open, with an "answered" button, until you mark them, and a toast tells you when a reply contains any.
 - **Plan:** the task or to-do steps Claude is working through, with a progress bar, ✓ / ▶ / ○ marks and the step running now.
 - **Agents:** every subagent and background agent with its status, type, tool-call count, last tool and elapsed time. A toast appears when one finishes or fails.
-- **Status line:** `plan 3/7 · 2 agents running`
+- **Status line:** `1 open question · plan 3/7 · 2 agents running`
+
+## ask-with-choices
+
+Adds a short instruction to Claude's system prompt: when it needs a decision or information from you, it should ask through the question form as multiple choice (2-4 options, the recommended one first) rather than leaving questions in its reply. The form always includes an "Other" field for a free-text answer, and Claude falls back to a free-text question only when the answer can't be listed.
 
 ## Install
 
@@ -29,6 +34,10 @@ Shows one pane (`/work-monitor`, which also opens the first time there's somethi
 
 ```bash
 /plugin install work-monitor --marketplace tiptoptopher/claude-mods
+```
+
+```bash
+/plugin install ask-with-choices --marketplace tiptoptopher/claude-mods
 ```
 
 Answer `y` to add the marketplace, then pick a scope.

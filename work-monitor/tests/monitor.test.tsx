@@ -43,3 +43,43 @@ test('plan steps and agents show in one pane', async ($, on) => {
     await ui.unmount()
   }
 })
+
+test('form questions resolve and inline questions stay open', async ($, on) => {
+  mock.clock(on)
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('agent.list', () => ({ value: [] }))
+  on('turn.complete', (_, e) => ({ text: e.answer }) as never)
+  on('tool.call', () => ({ result: { answers: { 'Which license?': 'MIT' } } }) as never)
+
+  await $.tool.call({
+    tool: 'AskUserQuestion',
+    questions: [
+      { question: 'Which license?', header: 'License', multiSelect: false, options: [] },
+      { question: 'Public or private?', header: 'Visibility', multiSelect: false, options: [] },
+    ],
+  } as never)
+  await $.turn.complete({
+    answer: 'Done.\n```\nif (x?) {}\n```\nShould I push it now? See https://x.y/?a=1',
+    durationMs: 1,
+    isAborted: false,
+    turnId: 't1',
+    reason: 'answer',
+  } as never)
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ type: 'Text', text: /✓ Which license\? → MIT/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /skipped Public or private\?/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /\? inline Should I push it now\?/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /if \(x/ })).toBeUndefined()
+    await ui.unmount()
+  }
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const done = await ui.find({ type: 'Button', text: /^answered$/ })
+  await ui.press({ key: done?.key ?? '' })
+  expect(await ui.find({ type: 'Text', text: /✓ Should I push it now\?/ })).toBeDefined()
+  await ui.unmount()
+})

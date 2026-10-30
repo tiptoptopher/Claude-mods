@@ -19,11 +19,23 @@ export type AgentRow = {
   endedAt?: number
 }
 
+// A question Claude asked: through the question form (`form`, answered or
+// skipped there) or in prose (`inline`, open until marked answered).
+export type Question = {
+  id: string
+  text: string
+  kind: 'form' | 'inline'
+  status: 'waiting' | 'answered' | 'unanswered' | 'open' | 'done'
+  answer?: string
+  at: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'work-monitor': {
       plan: Shaped<PlanItem[]>
       agents: Shaped<AgentRow[]>
+      questions: Shaped<Question[]>
       hasOpened: boolean
     }
   }

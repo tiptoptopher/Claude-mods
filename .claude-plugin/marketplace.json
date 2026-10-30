@@ -1,8 +1,23 @@
 {
   "name": "claude-mods",
-  "owner": { "name": "tiptoptopher" },
+  "owner": {
+    "name": "tiptoptopher"
+  },
   "plugins": [
-    { "name": "usage-meter", "source": "./usage-meter", "description": "Context fill, 5h/7-day usage limits and cost, with per-prompt and per-step deltas" },
-    { "name": "work-monitor", "source": "./work-monitor", "description": "One pane showing plan steps and the status of every subagent" }
+    {
+      "name": "usage-meter",
+      "source": "./usage-meter",
+      "description": "Context fill, 5h/7-day usage limits and cost, with per-prompt and per-step deltas"
+    },
+    {
+      "name": "work-monitor",
+      "source": "./work-monitor",
+      "description": "One pane showing open questions, plan steps and the status of every subagent"
+    },
+    {
+      "name": "ask-with-choices",
+      "source": "./ask-with-choices",
+      "description": "Claude asks questions as multiple choice in the question form instead of inline"
+    }
   ]
 }

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { AgentInfo, EngineInterface, Register, Timer } from 'claude-code'
 
-import type { AgentRow, PlanItem, PlanStatus } from '../types'
+import type { AgentRow, PlanItem, PlanStatus, Question } from '../types'
 
 const PANE = 'work-monitor'
 const ENDED = ['completed', 'failed', 'killed']
@@ -11,6 +11,9 @@ const plan = atom({ plugin: 'work-monitor', key: 'plan' } as const, [], {
 })
 const agents = atom({ plugin: 'work-monitor', key: 'agents' } as const, [], {
   shape: 'agents-1',
+})
+const questions = atom({ plugin: 'work-monitor', key: 'questions' } as const, [], {
+  shape: 'questions-1',
 })
 const hasOpened = atom({ plugin: 'work-monitor', key: 'hasOpened' } as const, false)
 
@@ -39,6 +42,33 @@ const bar = (done: number, total: number, width: number) => {
   return '█'.repeat(filled) + '░'.repeat(width - filled)
 }
 
+const isOpenQuestion = (q: Question) => q.status === 'open' || q.status === 'waiting'
+
+// Questions asked in prose rather than through the question form: sentences
+// ending in "?" outside code, quotes and tables.
+const inlineQuestions = (answer: string) => {
+  const found: string[] = []
+  let isInFence = false
+  for (const raw of answer.split('\n')) {
+    const line = raw.trim()
+    if (line.startsWith('```')) {
+      isInFence = !isInFence
+      continue
+    }
+    if (isInFence || line.startsWith('>') || line.startsWith('|')) continue
+    const plain = line
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/`[^`]*`/g, '')
+      .replace(/[*_#]/g, '')
+      .replace(/^[-\d.)\s]+/, '')
+    for (const m of plain.matchAll(/[^.!?]*\?/g)) {
+      const q = m[0].trim()
+      if (q.length >= 12 && q.length <= 300) found.push(q)
+    }
+  }
+  return found.slice(0, 8)
+}
+
 const openPane = ($: EngineInterface) => $.ui.open({ id: PANE, title: 'Work monitor' })
 
 // Open the pane by itself the first time there is something to watch.
@@ -56,6 +86,8 @@ const statusLine = async ($: EngineInterface) => {
     const done = items.filter(i => i.status === 'completed').length
     parts.push(`plan ${done}/${items.length}`)
   }
+  const open = (await read($, questions)).filter(isOpenQuestion).length
+  if (open > 0) parts.unshift(`${open} open question${open === 1 ? '' : 's'}`)
   const live = rows.filter(r => !ENDED.includes(r.status)).length
   if (live > 0) parts.push(`${live} agent${live === 1 ? '' : 's'} running`)
   $.ui.status(parts.length > 0 ? parts.join(' · ') : undefined)
@@ -99,7 +131,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'work-monitor',
-      description: 'Open the work monitor pane (plan steps and agents)',
+      description: 'Open the work monitor pane (questions, plan steps and agents)',
     })
     timer?.cancel()
     // Agents run between this session's own events: look again every 3s
@@ -128,6 +160,33 @@ export const register: Register = on => {
         rows.map(r => (r.id === id ? { ...r, calls: r.calls + 1, lastTool: tool } : r)),
       )
     }
+    if (e.tool === 'AskUserQuestion' && !e.agentId) {
+      const at = await $.clock.now()
+      const asked: Question[] = e.questions.map((q, i) => ({
+        id: `form-${at}-${i}`,
+        text: q.question,
+        kind: 'form',
+        status: 'waiting',
+        at,
+      }))
+      await update($, questions, list => [...list, ...asked].slice(-100))
+      await statusLine($)
+      const ran = await next(e)
+      const answers = (ran.result as { answers?: Record<string, string> } | undefined)?.answers ?? {}
+      await update($, questions, list =>
+        list.map(q => {
+          if (!asked.some(a => a.id === q.id)) return q
+          const answer = answers[q.text]
+          return answer
+            ? { ...q, status: 'answered', answer }
+            : { ...q, status: 'unanswered' }
+        }),
+      )
+      await statusLine($)
+
+      return ran
+    }
+
     const ran = await next(e)
     if (ran.deny !== undefined) return ran
     const result = ran.result as Record<string, unknown> | undefined
@@ -185,6 +244,28 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     await refresh($)
+    const asked = e.agentId ? [] : inlineQuestions(e.answer)
+    if (asked.length > 0) {
+      const at = await $.clock.now()
+      await update($, questions, list =>
+        [
+          ...list,
+          ...asked.map((text, i): Question => ({
+            id: `inline-${at}-${i}`,
+            text,
+            kind: 'inline',
+            status: 'open',
+            at,
+          })),
+        ].slice(-100),
+      )
+      $.ui.toast(
+        `Claude asked ${asked.length} question${asked.length === 1 ? '' : 's'} in its reply: see Work monitor`,
+        { timeoutMs: 8000 },
+      )
+      await statusLine($)
+      await openOnce($)
+    }
 
     return next(e)
   })
@@ -193,12 +274,59 @@ export const register: Register = on => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const items = await read($, plan)
     const rows = await read($, agents)
+    const qs = await read($, questions)
+    const openQs = qs.filter(isOpenQuestion)
+    const closedQs = qs.filter(q => !isOpenQuestion(q)).slice(-5)
     const now = await $.clock.now()
     const width = Math.max(10, Math.min(30, (e.props.bodyColumns ?? 40) - 16))
     const done = items.filter(i => i.status === 'completed').length
 
     return (
       <Box flexDirection="column" gap={1}>
+        <Box flexDirection="column">
+          <Box flexDirection="row" gap={1}>
+            <Text bold>Questions for you</Text>
+            {closedQs.length > 0 && (
+              <Button
+                key="clear-questions"
+                plain
+                label="clear answered"
+                onPress={async () => {
+                  await update($, questions, list => list.filter(isOpenQuestion))
+                  await statusLine($)
+                }}
+              />
+            )}
+          </Box>
+          {qs.length === 0 && <Text dimColor>No questions yet.</Text>}
+          {openQs.map(q => (
+            <Box flexDirection="row" gap={1}>
+              <Text color="warning">
+                {q.kind === 'form' ? '? form' : '? inline'} {q.text}
+              </Text>
+              {q.kind === 'inline' && (
+                <Button
+                  key={`done-${q.id}`}
+                  plain
+                  label="answered"
+                  onPress={async () => {
+                    await update($, questions, list =>
+                      list.map(one => (one.id === q.id ? { ...one, status: 'done' } : one)),
+                    )
+                    await statusLine($)
+                  }}
+                />
+              )}
+            </Box>
+          ))}
+          {closedQs.map(q => (
+            <Text dimColor>
+              {q.status === 'unanswered' ? '– skipped' : '✓'} {q.text}
+              {q.answer ? ` → ${q.answer}` : ''}
+            </Text>
+          ))}
+        </Box>
+
         <Box flexDirection="column">
           <Text bold>Plan</Text>
           {items.length === 0 ? (
