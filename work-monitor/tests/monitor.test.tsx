@@ -83,3 +83,52 @@ test('form questions resolve and inline questions stay open', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /✓ Should I push it now\?/ })).toBeDefined()
   await ui.unmount()
 })
+
+test('a tracked action is written to the action list page', async ($, on) => {
+  mock.clock(on)
+  const writes: Record<string, unknown>[] = []
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('agent.list', () => ({ value: [] }))
+  on('tool.call', (_, e) => {
+    if (e.tool === 'ArtifactData') writes.push(e as never)
+    return { result: {} } as never
+  })
+
+  const ran = await $.tool.call({
+    tool: 'mcp__work-monitor__track_manual_action',
+    title: 'Make claude-mods public',
+    device: 'phone',
+    steps: 'Settings, Change visibility',
+  } as never)
+
+  expect(writes).toHaveLength(1)
+  expect(writes[0]).toMatchObject({ action: 'set', collection: 'actions', data: { device: 'phone', status: 'open' } })
+  expect((ran.result as { isSaved: boolean }).isSaved).toBe(true)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /\[phone ok\] Make claude-mods public/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a reply that hands over a manual step is offered for tracking', async ($, on) => {
+  mock.clock(on)
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('agent.list', () => ({ value: [] }))
+  on('turn.complete', (_, e) => ({ text: e.answer }) as never)
+
+  await $.turn.complete({
+    answer: 'Pushed.\n\nYou will need to paste the setup script into the environment settings on your computer.',
+    durationMs: 1,
+    isAborted: false,
+    turnId: 't1',
+    reason: 'answer',
+  } as never)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /maybe: You will need to paste the setup script/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: /^track$/ })).toBeDefined()
+  await ui.unmount()
+})
