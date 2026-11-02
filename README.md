@@ -18,7 +18,7 @@ Usage limits only appear on subscription plans. Cost appears where the plan repo
 Shows one pane (`/work-monitor`, which also opens the first time there's something to watch) with:
 
 - **Actions for you:** manual steps only you can do (a setting, a sign-in, a repo change), tagged `[computer]` or `[phone ok]`. Claude logs each one with a `track_manual_action` tool, which also saves it to your private **action list page** so you can come back to it later from any device and tick it off. Sentences in Claude's replies that look like a manual step it didn't log appear as "maybe" with **track** and **dismiss** buttons.
-- **Questions for you:** every question Claude asked. Questions from the question form show as answered (with your answer) or skipped. Questions Claude wrote in its reply stay open, with an "answered" button, until you mark them, and a toast tells you when a reply contains any.
+- **Questions for you:** every question still waiting on you, each in its own card saying where it was asked (skipped in the form, or asked in a reply) and how long ago, with **Answered** and **Dismiss** buttons. A toast tells you when a reply contains questions. Answered questions fold into a list you can show, hide or clear; clearing never removes a question still waiting on you.
 - **Plan:** the task or to-do steps Claude is working through, with a progress bar, ✓ / ▶ / ○ marks and the step running now.
 - **Agents:** every subagent and background agent with its status, type, tool-call count, last tool and elapsed time. A toast appears when one finishes or fails.
 - **Status line:** `1 action for you · 1 open question · plan 3/7 · 2 agents running`

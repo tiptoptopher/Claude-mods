@@ -18,6 +18,10 @@ const questions = atom({ plugin: 'work-monitor', key: 'questions' } as const, []
 const actions = atom({ plugin: 'work-monitor', key: 'actions' } as const, [], {
   shape: 'actions-1',
 })
+const isAnsweredShown = atom(
+  { plugin: 'work-monitor', key: 'isAnsweredShown' } as const,
+  false,
+)
 const hasOpened = atom({ plugin: 'work-monitor', key: 'hasOpened' } as const, false)
 
 const MARK: Record<PlanStatus, string> = {
@@ -45,7 +49,23 @@ const bar = (done: number, total: number, width: number) => {
   return '█'.repeat(filled) + '░'.repeat(width - filled)
 }
 
-const isOpenQuestion = (q: Question) => q.status === 'open' || q.status === 'waiting'
+// Skipped form questions stay open: they still need a reply.
+const isOpenQuestion = (q: Question) =>
+  q.status === 'open' || q.status === 'waiting' || q.status === 'unanswered'
+
+const askedAgo = (at: number, now: number) => {
+  const m = Math.max(0, Math.round((now - at) / 60_000))
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  return h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`
+}
+
+const QUESTION_LABEL: Record<string, string> = {
+  waiting: 'IN THE FORM NOW',
+  unanswered: 'SKIPPED IN THE FORM',
+  open: 'ASKED IN A REPLY',
+}
 
 // Questions asked in prose rather than through the question form: sentences
 // ending in "?" outside code, quotes and tables.
@@ -312,14 +332,21 @@ export const register: Register = on => {
       await update($, questions, list => [...list, ...asked].slice(-100))
       await statusLine($)
       const ran = await next(e)
-      const answers = (ran.result as { answers?: Record<string, string> } | undefined)?.answers ?? {}
+      const record = (ran.result ?? {}) as {
+        answers?: Record<string, string>
+        response?: string
+        afkTimeoutMs?: number
+      }
+      const answers = record.answers ?? {}
+      // A reply typed in place of the options answers the whole form; a form
+      // that timed out while the person was away leaves its questions open.
+      const typed = record.response?.trim()
       await update($, questions, list =>
-        list.map(q => {
+        list.map((q): Question => {
           if (!asked.some(a => a.id === q.id)) return q
-          const answer = answers[q.text]
-          return answer
-            ? { ...q, status: 'answered', answer }
-            : { ...q, status: 'unanswered' }
+          const answer = answers[q.text]?.trim() || typed
+          if (answer) return { ...q, status: 'answered', answer }
+          return { ...q, status: record.afkTimeoutMs ? 'open' : 'unanswered' }
         }),
       )
       await statusLine($)
@@ -439,7 +466,12 @@ export const register: Register = on => {
     const suggested = acts.filter(a => a.status === 'suggested')
     const qs = await read($, questions)
     const openQs = qs.filter(isOpenQuestion)
-    const closedQs = qs.filter(q => !isOpenQuestion(q)).slice(-5)
+    const closedQs = qs.filter(q => !isOpenQuestion(q))
+    const isShowingAnswered = await read($, isAnsweredShown)
+    const closeQuestion = async (id: string, status: 'done' | 'dismissed') => {
+      await update($, questions, list => list.map(one => (one.id === id ? { ...one, status } : one)))
+      await statusLine($)
+    }
     const now = await $.clock.now()
     const width = Math.max(10, Math.min(30, (e.props.bodyColumns ?? 40) - 16))
     const done = items.filter(i => i.status === 'completed').length
@@ -490,48 +522,75 @@ export const register: Register = on => {
           <Text dimColor>All open actions: {ACTION_LIST_URL}</Text>
         </Box>
 
-        <Box flexDirection="column">
-          <Box flexDirection="row" gap={1}>
+        <Box flexDirection="column" gap={1}>
+          <Text>
             <Text bold>Questions for you</Text>
-            {closedQs.length > 0 && (
-              <Button
-                key="clear-questions"
-                plain
-                label="clear answered"
-                onPress={async () => {
-                  await update($, questions, list => list.filter(isOpenQuestion))
-                  await statusLine($)
-                }}
-              />
-            )}
-          </Box>
-          {qs.length === 0 && <Text dimColor>No questions yet.</Text>}
+            <Text dimColor>
+              {openQs.length === 0 ? '  nothing waiting on you' : `  ${openQs.length} waiting on you`}
+            </Text>
+          </Text>
+
           {openQs.map(q => (
-            <Box flexDirection="row" gap={1}>
-              <Text color="warning">
-                {q.kind === 'form' ? '? form' : '? inline'} {q.text}
+            <Box
+              key={`q-${q.id}`}
+              flexDirection="column"
+              borderStyle="round"
+              borderColor={q.status === 'unanswered' ? 'error' : 'warning'}
+              paddingX={1}
+            >
+              <Text dimColor>
+                {QUESTION_LABEL[q.status] ?? 'OPEN'} · {askedAgo(q.at, now)}
               </Text>
-              {q.kind === 'inline' && (
-                <Button
-                  key={`done-${q.id}`}
-                  plain
-                  label="answered"
-                  onPress={async () => {
-                    await update($, questions, list =>
-                      list.map(one => (one.id === q.id ? { ...one, status: 'done' } : one)),
-                    )
-                    await statusLine($)
-                  }}
-                />
+              <Text>{q.text}</Text>
+              {q.status !== 'waiting' && (
+                <Box flexDirection="row" gap={1} marginTop={1}>
+                  <Button
+                    key={`done-${q.id}`}
+                    variant="primary"
+                    label="Answered"
+                    onPress={() => closeQuestion(q.id, 'done')}
+                  />
+                  <Button
+                    key={`dismiss-q-${q.id}`}
+                    label="Dismiss"
+                    onPress={() => closeQuestion(q.id, 'dismissed')}
+                  />
+                </Box>
               )}
             </Box>
           ))}
-          {closedQs.map(q => (
-            <Text dimColor>
-              {q.status === 'unanswered' ? '– skipped' : '✓'} {q.text}
-              {q.answer ? ` → ${q.answer}` : ''}
-            </Text>
-          ))}
+
+          {closedQs.length > 0 && (
+            <Box flexDirection="column">
+              <Box flexDirection="row" gap={1}>
+                <Text dimColor>Answered ({closedQs.length})</Text>
+                <Button
+                  key="toggle-answered"
+                  plain
+                  label={isShowingAnswered ? 'hide' : 'show'}
+                  onPress={() => update($, isAnsweredShown, shown => !shown)}
+                />
+                <Button
+                  key="clear-answered"
+                  plain
+                  label="clear answered"
+                  onPress={async () => {
+                    await update($, questions, list => list.filter(isOpenQuestion))
+                    await statusLine($)
+                  }}
+                />
+              </Box>
+              {isShowingAnswered &&
+                closedQs.slice(-8).map(q => (
+                  <Box key={`a-${q.id}`} flexDirection="column" paddingLeft={2}>
+                    <Text dimColor>
+                      {q.status === 'dismissed' ? '–' : '✓'} {q.text}
+                    </Text>
+                    {q.answer && <Text color="success">  → {q.answer}</Text>}
+                  </Box>
+                ))}
+            </Box>
+          )}
         </Box>
 
         <Box flexDirection="column">

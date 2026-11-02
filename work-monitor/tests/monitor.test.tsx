@@ -44,7 +44,7 @@ test('plan steps and agents show in one pane', async ($, on) => {
   }
 })
 
-test('form questions resolve and inline questions stay open', async ($, on) => {
+test('skipped and inline questions stay open; clear removes only answered ones', async ($, on) => {
   mock.clock(on)
   on('ui.status', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
@@ -68,19 +68,38 @@ test('form questions resolve and inline questions stay open', async ($, on) => {
     reason: 'answer',
   } as never)
 
-  for (const surface of ['terminal', 'desktop'] as const) {
+  for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ type: 'Text', text: /✓ Which license\? → MIT/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /skipped Public or private\?/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /\? inline Should I push it now\?/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /2 waiting on you/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /SKIPPED IN THE FORM/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^Public or private\?$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^Should I push it now\?$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /if \(x/ })).toBeUndefined()
     await ui.unmount()
   }
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  const done = await ui.find({ type: 'Button', text: /^answered$/ })
-  await ui.press({ key: done?.key ?? '' })
-  expect(await ui.find({ type: 'Text', text: /✓ Should I push it now\?/ })).toBeDefined()
+  await ui.press({ key: 'clear-answered' })
+  expect(await ui.find({ type: 'Text', text: /2 waiting on you/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Answered \(/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a reply typed in place of the options counts as an answer', async ($, on) => {
+  mock.clock(on)
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('tool.call', () => ({ result: { answers: {}, response: 'Use Apache-2.0' } }) as never)
+
+  await $.tool.call({
+    tool: 'AskUserQuestion',
+    questions: [{ question: 'Which license?', header: 'License', multiSelect: false, options: [] }],
+  } as never)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /nothing waiting on you/ })).toBeDefined()
+  await ui.press({ key: 'toggle-answered' })
+  expect(await ui.find({ type: 'Text', text: /→ Use Apache-2.0/ })).toBeDefined()
   await ui.unmount()
 })
 

@@ -19,13 +19,15 @@ export type AgentRow = {
   endedAt?: number
 }
 
-// A question Claude asked: through the question form (`form`, answered or
-// skipped there) or in prose (`inline`, open until marked answered).
+// A question Claude asked: through the question form (`form`) or in prose
+// (`inline`). `waiting` is on screen in the form; `open` and `unanswered`
+// (skipped in the form) still need a reply; `answered`, `done` (marked by
+// hand) and `dismissed` are closed.
 export type Question = {
   id: string
   text: string
   kind: 'form' | 'inline'
-  status: 'waiting' | 'answered' | 'unanswered' | 'open' | 'done'
+  status: 'waiting' | 'answered' | 'unanswered' | 'open' | 'done' | 'dismissed'
   answer?: string
   at: number
 }
@@ -49,6 +51,7 @@ declare module 'claude-code' {
       agents: Shaped<AgentRow[]>
       questions: Shaped<Question[]>
       actions: Shaped<ManualAction[]>
+      isAnsweredShown: boolean
       hasOpened: boolean
     }
   }
